@@ -88,7 +88,7 @@ namespace MusicBeePlugin
             var album = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Album);
             var durationMs = _mbApiInterface.NowPlaying_GetDuration();
             var positionMs = _mbApiInterface.Player_GetPosition();
-            var playState = _mbApiInterface.Player_GetPlayState();
+            var playState = RemapPlayState(_mbApiInterface.Player_GetPlayState());
 
             var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
 
@@ -108,6 +108,23 @@ namespace MusicBeePlugin
             var client = new System.Net.WebClient();
             client.Headers.Add("Content-Type", "application/json");
             client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(json));
+        }
+        
+        private static RemappedPlayState RemapPlayState(PlayState playState)
+        {
+            return playState switch
+            {
+                PlayState.Playing => RemappedPlayState.Playing,
+                PlayState.Paused => RemappedPlayState.Paused,
+                _ => RemappedPlayState.Other
+            };
+        }
+
+        private enum RemappedPlayState
+        {
+            Playing,
+            Paused,
+            Other
         }
 
         // return an array of lyric or artwork provider names this plugin supports
