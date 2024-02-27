@@ -92,6 +92,23 @@ public partial class Plugin
 
         var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
 
+        // Resize the album art so it's not sending megabytes of base64 data
+        if (albumArt is { Length: > 0 })
+        {
+            const int maxWidth = 300;
+
+            using var image = Image.FromStream(new System.IO.MemoryStream(Convert.FromBase64String(albumArt)));
+
+            var newWidth = Math.Min(image.Width, maxWidth);
+            var newHeight = (int)(image.Height * (newWidth / (double)image.Width)); // scale the height to match the new width
+
+            using var resizedImage = new Bitmap(image, newWidth, newHeight);
+
+            using var memoryStream = new System.IO.MemoryStream();
+            resizedImage.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
+            albumArt = Convert.ToBase64String(memoryStream.ToArray());
+        }
+
         var json = new
         {
             artist,
@@ -100,7 +117,6 @@ public partial class Plugin
             durationMs,
             positionMs,
             playState,
-
             albumArt
         };
 
