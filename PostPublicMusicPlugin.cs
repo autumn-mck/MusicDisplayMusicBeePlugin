@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace MusicBeePlugin;
 
@@ -75,10 +76,16 @@ public partial class Plugin
 
     private static void PostData(object playingData)
     {
+        var serializerSettings = new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore
+        };
+
         using var client = new System.Net.WebClient();
         client.Headers.Add("Content-Type", "application/json");
         client.Encoding = Encoding.UTF8;
-        client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData));
+        client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData, serializerSettings));
     }
 
     private static string ResizeAlbumArt(string albumArt, int maxWidth)
