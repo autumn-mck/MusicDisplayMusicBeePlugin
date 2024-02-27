@@ -19,30 +19,101 @@ public partial class Plugin
         _about.Name = "PostPublicMusic";
         _about.Description = "A plugin to display what music I'm listening to on my website";
         _about.Author = "Autumn";
-        _about.TargetApplication = "";   //  the name of a Plugin Storage device or panel header for a dockable panel
+        _about.TargetApplication = ""; // the name of a Plugin Storage device or panel header for a dockable panel
         _about.Type = PluginType.General;
 
-        _about.VersionMajor = 1;  // your plugin version
+        // Plugin version
+        _about.VersionMajor = 1;
         _about.VersionMinor = 0;
         _about.Revision = 1;
 
         _about.MinInterfaceVersion = MinInterfaceVersion;
         _about.MinApiRevision = MinApiRevision;
 
-        _about.ReceiveNotifications = (ReceiveNotificationFlags.PlayerEvents | ReceiveNotificationFlags.TagEvents);
-        _about.ConfigurationPanelHeight = 0;   // height in pixels that MusicBee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+        _about.ReceiveNotifications = (ReceiveNotificationFlags.PlayerEvents);
+        // Height in pixels that MusicBee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+        _about.ConfigurationPanelHeight = 0;
 
         return _about;
     }
 
+    // receive event notifications from MusicBee
+    // you need to set about.ReceiveNotificationFlags = PlayerEvents to receive all notifications, and not just the startup event
+    public void ReceiveNotification(string _, NotificationType type)
+    {
+        if (type is not (NotificationType.TrackChanged or NotificationType.PlayStateChanged)) return;
+
+        var artist = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Artist);
+        var title = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.TrackTitle);
+        var album = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Album);
+        var durationMs = _mbApiInterface.NowPlaying_GetDuration();
+        var positionMs = _mbApiInterface.Player_GetPosition();
+        var playState = RemapPlayState(_mbApiInterface.Player_GetPlayState());
+
+        var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
+        albumArt = ResizeAlbumArt(albumArt, maxWidth: 300);
+
+        var playingData = new
+        {
+            artist,
+            title,
+            album,
+            durationMs,
+            positionMs,
+            playState,
+            albumArt
+        };
+
+        PostData(playingData);
+    }
+
+    private static void PostData(object playingData)
+    {
+        var client = new System.Net.WebClient();
+        client.Headers.Add("Content-Type", "application/json");
+        client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData));
+    }
+
+    private static string ResizeAlbumArt(string albumArt, int maxWidth)
+    {
+        if (albumArt is not { Length: > 0 }) return albumArt;
+
+        using var image = Image.FromStream(new System.IO.MemoryStream(Convert.FromBase64String(albumArt)));
+
+        var newWidth = Math.Min(image.Width, maxWidth);
+        var newHeight = (int)(image.Height * (newWidth / (double)image.Width)); // scale the height to match the new width
+
+        using var resizedImage = new Bitmap(image, newWidth, newHeight);
+
+        using var memoryStream = new System.IO.MemoryStream();
+        resizedImage.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
+        albumArt = Convert.ToBase64String(memoryStream.ToArray());
+
+        return albumArt;
+    }
+
+    private static RemappedPlayState RemapPlayState(PlayState playState) => playState switch
+    {
+        PlayState.Playing => RemappedPlayState.Playing,
+        PlayState.Paused => RemappedPlayState.Paused,
+        _ => RemappedPlayState.Other
+    };
+
+    private enum RemappedPlayState
+    {
+        Playing,
+        Paused,
+        Other
+    }
+
     public bool Configure(IntPtr panelHandle)
     {
-        // save any persistent settings in a sub-folder of this path
+        // Save any persistent settings in a sub-folder of this path
         // var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
 
         // panelHandle will only be set if you set about.ConfigurationPanelHeight to a non-zero value
-        // keep in mind the panel width is scaled according to the font the user has selected
-        // if about.ConfigurationPanelHeight is set to 0, you can display your own popup window
+        // Keep in mind the panel width is scaled according to the font the user has selected
+        // If about.ConfigurationPanelHeight is set to 0, you can display your own popup window
         if (panelHandle == IntPtr.Zero) return false;
 
         var configPanel = (Panel)Control.FromHandle(panelHandle);
@@ -70,76 +141,8 @@ public partial class Plugin
     {
     }
 
-    // uninstall this plugin - clean up any persisted files
+    // On uninstall clean up any persisted files
     public void Uninstall()
     {
-    }
-
-    // receive event notifications from MusicBee
-    // you need to set about.ReceiveNotificationFlags = PlayerEvents to receive all notifications, and not just the startup event
-    public void ReceiveNotification(string _, NotificationType type)
-    {
-        // perform some action depending on the notification type
-        if (type is not (NotificationType.TrackChanged or NotificationType.PlayStateChanged)) return;
-
-
-        var artist = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Artist);
-        var title = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.TrackTitle);
-        var album = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Album);
-        var durationMs = _mbApiInterface.NowPlaying_GetDuration();
-        var positionMs = _mbApiInterface.Player_GetPosition();
-        var playState = RemapPlayState(_mbApiInterface.Player_GetPlayState());
-
-        var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
-
-        // Resize the album art so it's not sending megabytes of base64 data
-        if (albumArt is { Length: > 0 })
-        {
-            const int maxWidth = 300;
-
-            using var image = Image.FromStream(new System.IO.MemoryStream(Convert.FromBase64String(albumArt)));
-
-            var newWidth = Math.Min(image.Width, maxWidth);
-            var newHeight = (int)(image.Height * (newWidth / (double)image.Width)); // scale the height to match the new width
-
-            using var resizedImage = new Bitmap(image, newWidth, newHeight);
-
-            using var memoryStream = new System.IO.MemoryStream();
-            resizedImage.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
-            albumArt = Convert.ToBase64String(memoryStream.ToArray());
-        }
-
-        var json = new
-        {
-            artist,
-            title,
-            album,
-            durationMs,
-            positionMs,
-            playState,
-            albumArt
-        };
-
-        // Send the JSON object to the server 
-        var client = new System.Net.WebClient();
-        client.Headers.Add("Content-Type", "application/json");
-        client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(json));
-    }
-
-    private static RemappedPlayState RemapPlayState(PlayState playState)
-    {
-        return playState switch
-        {
-            PlayState.Playing => RemappedPlayState.Playing,
-            PlayState.Paused => RemappedPlayState.Paused,
-            _ => RemappedPlayState.Other
-        };
-    }
-
-    private enum RemappedPlayState
-    {
-        Playing,
-        Paused,
-        Other
     }
 }
