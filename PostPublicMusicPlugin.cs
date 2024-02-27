@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
 using Newtonsoft.Json;
 
@@ -69,8 +70,9 @@ public partial class Plugin
 
     private static void PostData(object playingData)
     {
-        var client = new System.Net.WebClient();
+        using var client = new System.Net.WebClient();
         client.Headers.Add("Content-Type", "application/json");
+        client.Encoding = Encoding.UTF8;
         client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData));
     }
 
