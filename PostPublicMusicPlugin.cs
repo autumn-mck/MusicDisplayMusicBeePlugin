@@ -44,6 +44,12 @@ public partial class Plugin
     {
         if (type is not (NotificationType.TrackChanged or NotificationType.PlayStateChanged)) return;
 
+        var playingData = GetStatus();
+        PostData(playingData);
+    }
+
+    private PlayingData GetStatus()
+    {
         var artist = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Artist);
         var title = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.TrackTitle);
         var album = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Album);
@@ -54,18 +60,17 @@ public partial class Plugin
         var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
         albumArt = ResizeAlbumArt(albumArt, maxWidth: 300);
 
-        var playingData = new
+        var playingData = new PlayingData
         {
-            artist,
-            title,
-            album,
-            durationMs,
-            positionMs,
-            playState,
-            albumArt
+            Artist = artist,
+            Title = title,
+            Album = album,
+            DurationMs = durationMs,
+            PositionMs = positionMs,
+            PlayState = playState,
+            AlbumArt = albumArt
         };
-
-        PostData(playingData);
+        return playingData;
     }
 
     private static void PostData(object playingData)
@@ -105,7 +110,19 @@ public partial class Plugin
     {
         Playing,
         Paused,
-        Other
+        Other,
+        Offline
+    }
+
+    private class PlayingData
+    {
+        public string Artist { get; set; }
+        public string Title { get; set; }
+        public string Album { get; set; }
+        public int DurationMs { get; set; }
+        public int PositionMs { get; set; }
+        public RemappedPlayState PlayState { get; set; }
+        public string AlbumArt { get; set; }
     }
 
     public bool Configure(IntPtr panelHandle)
@@ -141,6 +158,9 @@ public partial class Plugin
     // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
     public void Close(PluginCloseReason reason)
     {
+        var playingData = GetStatus();
+        playingData.PlayState = RemappedPlayState.Offline;
+        PostData(playingData);
     }
 
     // On uninstall clean up any persisted files
