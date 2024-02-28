@@ -11,6 +11,8 @@ public partial class Plugin
 {
     private MusicBeeApiInterface _mbApiInterface;
     private readonly PluginInfo _about = new();
+    
+    private const string PluginSettingsFileName = "post-public-music-settings.json";
 
     public PluginInfo Initialise(IntPtr apiInterfacePtr)
     {
@@ -82,14 +84,13 @@ public partial class Plugin
             NullValueHandling = NullValueHandling.Ignore
         };
         
-        var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
-        var apiKey = System.IO.File.ReadAllText(System.IO.Path.Combine(dataPath, "post-public-music-api-key.txt")).Trim();
+        var settings = GetSettings();
 
         using var client = new System.Net.WebClient();
         client.Headers.Add("Content-Type", "application/json");
-        client.Headers.Add("Authorization", $"Basic {apiKey}");
+        client.Headers.Add("Authorization", $"Basic {settings.ApiKey}");
         client.Encoding = Encoding.UTF8;
-        client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData, serializerSettings));
+        client.UploadString(settings.ServerUrl, "POST", JsonConvert.SerializeObject(playingData, serializerSettings));
     }
 
     private static string ResizeAlbumArt(string albumArt, int maxWidth)
@@ -108,6 +109,27 @@ public partial class Plugin
         albumArt = Convert.ToBase64String(memoryStream.ToArray());
 
         return albumArt;
+    }
+
+    private PluginSettings GetSettings()
+    {
+        var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+        var filePath = System.IO.Path.Combine(dataPath, PluginSettingsFileName); 
+        var settings = JsonConvert.DeserializeObject<PluginSettings>(System.IO.File.ReadAllText(filePath));
+        return settings;
+    }
+    
+    private void SaveSettings(PluginSettings settings)
+    {
+        var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+        var filePath = System.IO.Path.Combine(dataPath, PluginSettingsFileName);
+        System.IO.File.WriteAllText(filePath, JsonConvert.SerializeObject(settings, Formatting.Indented));
+    }
+    
+    private class PluginSettings
+    {
+        public string ApiKey { get; set; }
+        public string ServerUrl { get; set; }
     }
 
     private static RemappedPlayState RemapPlayState(PlayState playState) => playState switch
@@ -177,5 +199,8 @@ public partial class Plugin
     // On uninstall clean up any persisted files
     public void Uninstall()
     {
+        var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+        var filePath = System.IO.Path.Combine(dataPath, PluginSettingsFileName);
+        System.IO.File.Delete(filePath);
     }
 }
