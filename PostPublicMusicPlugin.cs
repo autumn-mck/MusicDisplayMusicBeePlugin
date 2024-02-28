@@ -74,16 +74,20 @@ public partial class Plugin
         return playingData;
     }
 
-    private static void PostData(object playingData)
+    private void PostData(object playingData)
     {
         var serializerSettings = new JsonSerializerSettings
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore
         };
+        
+        var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+        var apiKey = System.IO.File.ReadAllText(System.IO.Path.Combine(dataPath, "post-public-music-api-key.txt")).Trim();
 
         using var client = new System.Net.WebClient();
         client.Headers.Add("Content-Type", "application/json");
+        client.Headers.Add("Authorization", $"Basic {apiKey}");
         client.Encoding = Encoding.UTF8;
         client.UploadString("http://localhost:3000/now-playing", "POST", JsonConvert.SerializeObject(playingData, serializerSettings));
     }
