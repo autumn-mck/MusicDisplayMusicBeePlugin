@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Net;
 using System.Text;
 using System.Windows.Forms;
 using Newtonsoft.Json;
@@ -61,7 +62,7 @@ public partial class Plugin
         var playState = RemapPlayState(_mbApiInterface.Player_GetPlayState());
 
         var albumArt = _mbApiInterface.NowPlaying_GetArtwork();
-        albumArt = ResizeAlbumArt(albumArt, maxWidth: 300);
+        albumArt = ResizeAlbumArt(albumArt, maxWidth: 200);
 
         var playingData = new PlayingData
         {
@@ -85,12 +86,38 @@ public partial class Plugin
         };
         
         var settings = GetSettings();
-
-        using var client = new System.Net.WebClient();
-        client.Headers.Add("Content-Type", "application/json");
-        client.Headers.Add("Authorization", $"Basic {settings.ApiKey}");
-        client.Encoding = Encoding.UTF8;
-        client.UploadString(settings.ServerUrl, "POST", JsonConvert.SerializeObject(playingData, serializerSettings));
+        try
+        {
+            var request = WebRequest.Create(settings.ServerUrl);
+            
+            request.Method = "POST";
+            request.ContentType = "application/json";
+            request.Headers.Add("Authorization", $"Basic {settings.ApiKey}");
+            
+            var json = JsonConvert.SerializeObject(playingData, serializerSettings);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            request.ContentLength = bytes.Length;
+            
+            using var requestStream = request.GetRequestStream();
+            requestStream.Write(bytes, 0, bytes.Length);
+            
+            using var response = request.GetResponse();
+            
+            using var responseStream = response.GetResponseStream();
+            using var reader = new System.IO.StreamReader(responseStream);
+            var responseText = reader.ReadToEnd();
+        }
+        catch (AggregateException e)
+        {
+            foreach (var innerException in e.InnerExceptions)
+            {
+                MessageBox.Show(innerException.Message);
+            }
+        }
+        catch (Exception e)
+        {
+            MessageBox.Show(e.Message);
+        }
     }
 
     private static string ResizeAlbumArt(string albumArt, int maxWidth)
